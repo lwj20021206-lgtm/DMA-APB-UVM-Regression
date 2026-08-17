@@ -1,0 +1,27 @@
+.DS_Store
+
+# Synopsys VCS build products
+csrc/
+simv
+simv.*
+*.daidir/
+*.vdb/
+ucli.key
+vc_hdrs.h
+
+# Simulation logs and waveforms
+*.log
+*.vcd
+*.vpd
+*.fsdb
+*.wlf
+dma_read.txt
+dma_write.txt
+
+# Debug and coverage viewers
+DVEfiles/
+urgReport/
+verdiLog/
+novas.*
+AN.DB/
+out/
