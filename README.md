@@ -15,8 +15,9 @@
   与中断检查。
 - `apb_device_src/apb_device_coverage_full.sv`：功能覆盖率模型。
 - `top.sv`：DUT/TB 顶层和可选波形控制。
-- `Makefile`、`scripts/`：一次编译、单测、回归、pass/fail 检查和 URG 合并。
-- `out/`：运行后自动生成的 build、单测日志、波形和 coverage 数据。
+- `Makefile`、`scripts/check_run.sh`：一次编译、单测、串行回归和 pass/fail 检查。
+- `COVERAGE_GUIDE.md`：从第一次跑回归开始，讲解 coverage 的采样、存储、累计与 Verdi 查看方法。
+- `simv.vdb`、`regression_logs/`、`waveform.fsdb`：仿真后在工程根目录生成的 coverage、回归日志和单测波形。
 
 ## 已修复的兼容问题
 
@@ -51,22 +52,20 @@
 覆盖即可。
 
 ```sh
-make compile
-make run TEST=dma_apb_copy_test SEED=1
+make vcs_build
+make vcs_run TEST=dma_apb_copy_test SEED=1
 ```
 
-查看全部 test：
-
-```sh
-make list-tests
-```
-
-单测结果位于：
+`make vcs_run` 会在需要时自动完成编译，因此平时也可以只执行第二条命令。单测默认生成：
 
 ```text
-out/runs/normal/<TEST>_seed_<SEED>/sim.log
-out/runs/normal/<TEST>_seed_<SEED>/coverage.vdb
+sim.log
+waveform.fsdb
+simv.vdb
 ```
+
+其中 `sim.log` 和 `waveform.fsdb` 会被下一次单测覆盖；`simv.vdb` 会按
+`<TEST>_<SEED>` 保存本次 coverage record，并与此前同一 campaign 的结果累计。
 
 脚本不仅检查 simulator 退出码，还要求 log 中 `UVM_ERROR : 0` 和
 `UVM_FATAL : 0`，避免 DUT `$finish` 提前退出却被误判为 PASS。
@@ -74,41 +73,47 @@ out/runs/normal/<TEST>_seed_<SEED>/coverage.vdb
 ## 回归与累计覆盖率
 
 ```sh
-make regress
+make regression
 ```
 
 该命令只编译一次，随后运行全部定向 test，并对 `dma_apb_random_test` 使用默认
-seed `1 2 3 4 5`。最后由 URG 合并同一版 `simv` 产生的 VDB：
+seed `1 2 3 4 5`，总计 13 次仿真。每次 run 使用唯一的 `-cm_name`，串行写入同一个
+`simv.vdb`；因此当前简化流程不需要额外运行 URG merge。回归日志位于：
 
 ```text
-out/coverage/normal/merged.vdb
-out/coverage/normal/report/dashboard.html
+regression_logs/<TEST>_<SEED>.log
+```
+
+查看累计覆盖率：
+
+```sh
+verdi -cov -covdir simv.vdb &
 ```
 
 自定义随机种子和随机事务数：
 
 ```sh
-make regress RANDOM_SEEDS="11 22 33" RANDOM_OPS=100
+make regression RANDOM_SEEDS="11 22 33" RANDOM_OPS=100
 ```
 
-源码变化触发重新编译后，Makefile 会自动清理该 build variant 的旧 run/VDB，
-防止不同版本的 coverage 被混合。
+`make regression` 开始时会自动 clean，保证这是一个新 campaign。若手动连续执行
+`make vcs_run`，可以有意累计 coverage；但修改 RTL、TB、covergroup 或覆盖选项后，
+应先执行 `make clean`，不要把不同版本的数据混入同一个 VDB。
+
+coverage 的完整底层原理、9 组功能覆盖模型、单次与累计结果的区别、Verdi 阅读顺序和
+常见误区，见 [Coverage Guide](COVERAGE_GUIDE.md)。
 
 ## 波形
 
-无需 Verdi PLI 的 VPD：
+单测默认生成 FSDB：
 
 ```sh
-make run TEST=dma_apb_busy_test SEED=1 WAVE=1
-dve -vpd out/runs/vpd/dma_apb_busy_test_seed_1/waveform.vpd &
+make vcs_run TEST=dma_apb_copy_test SEED=1
+verdi -dbdir simv.daidir -ssf waveform.fsdb &
 ```
 
-有 Verdi 时生成 FSDB：
-
-```sh
-make run TEST=dma_apb_copy_test SEED=1 FSDB=1 NOVAS_HOME=/path/to/verdi
-verdi -ssf out/runs/fsdb/dma_apb_copy_test_seed_1/waveform.fsdb &
-```
+回归默认使用 `WAVE=0`，避免 13 次仿真反复覆盖同一个大波形文件；关闭波形不会关闭
+coverage 采集。
 
 ## Coverage waiver
 
